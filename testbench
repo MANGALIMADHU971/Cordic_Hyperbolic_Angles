@@ -1,0 +1,92 @@
+`timescale 1ns/1ps
+
+module tb_cordic_hyperbola;
+
+    reg clk;
+    reg rst;
+    reg start;
+    reg signed [15:0] z_in;
+
+    wire signed [31:0] sinh_out;
+    wire signed [31:0] cosh_out;
+    wire signed [31:0] tanh_out;
+    wire done;
+
+    // DUT
+    cordic_hyperbola dut (
+        .clk(clk),
+        .rst(rst),
+        .start(start),
+        .z_in(z_in),
+        .sinh_out(sinh_out),
+        .cosh_out(cosh_out),
+        .tanh_out(tanh_out),
+        .done(done)
+    );
+
+    always #5 clk = ~clk;
+
+    real z_real;
+    real sinh_real, cosh_real, tanh_real;
+    real sinh_hw, cosh_hw, tanh_hw;
+
+    function real q4_12_to_real(input signed [15:0] v);
+        q4_12_to_real = v / 4096.0;
+    endfunction
+
+    function real q16_16_to_real(input signed [31:0] v);
+        q16_16_to_real = v / 65536.0;
+    endfunction
+
+    function signed [15:0] real_to_q4_12(input real r);
+        real_to_q4_12 = r * 4096.0;
+    endfunction
+
+    initial begin
+        clk = 0;
+        rst = 1;
+        start = 0;
+        z_in = 0;
+
+        #20 rst = 0;
+
+        run_test(0.25);
+        run_test(0.50);
+        run_test(1.00);
+        run_test(-0.50);
+        run_test(-1.00);
+
+        #50;
+        $display("? All tests completed.");
+        $finish;
+    end
+
+    task run_test(input real z_val);
+        begin
+            @(posedge clk);
+            z_real = z_val;
+            z_in   = real_to_q4_12(z_real);
+            start  = 1;
+
+            @(posedge clk);
+            start = 0;
+
+            wait(done);
+
+            sinh_hw = q16_16_to_real(sinh_out);
+            cosh_hw = q16_16_to_real(cosh_out);
+            tanh_hw = q16_16_to_real(tanh_out);
+
+            sinh_real = $sinh(z_real);
+            cosh_real = $cosh(z_real);
+            tanh_real = $tanh(z_real);
+
+            $display("--------------------------------------------------");
+            $display("Input z        = %f", z_real);
+            $display("sinh HW / REF  = %f / %f", sinh_hw, sinh_real);
+            $display("cosh HW / REF  = %f / %f", cosh_hw, cosh_real);
+            $display("tanh HW / REF  = %f / %f", tanh_hw, tanh_real);
+        end
+    endtask
+
+endmodule
