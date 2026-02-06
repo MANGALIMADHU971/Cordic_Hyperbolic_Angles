@@ -1,0 +1,89 @@
+module cordic_hyperbola (
+    input  wire clk,
+    input  wire rst,
+    input  wire start,
+    input  wire signed [15:0] z_in,
+
+    output reg signed [31:0] sinh_out,
+    output reg signed [31:0] cosh_out,
+    output reg signed [31:0] tanh_out,
+    output reg done
+);
+
+    reg signed [31:0] x, y, z;
+    reg [4:0] iter;
+
+    reg signed [31:0] exp_pos; // e^x
+    reg signed [31:0] exp_neg; // e^-x
+
+    reg signed [15:0] atanh_lut [0:15];
+
+    initial begin
+        atanh_lut[0]  = 16'sd5493;
+        atanh_lut[1]  = 16'sd2555;
+        atanh_lut[2]  = 16'sd1255;
+        atanh_lut[3]  = 16'sd624;
+        atanh_lut[4]  = 16'sd312;
+        atanh_lut[5]  = 16'sd156;
+        atanh_lut[6]  = 16'sd78;
+        atanh_lut[7]  = 16'sd39;
+        atanh_lut[8]  = 16'sd20;
+        atanh_lut[9]  = 16'sd10;
+        atanh_lut[10] = 16'sd5;
+        atanh_lut[11] = 16'sd3;
+        atanh_lut[12] = 16'sd1;
+        atanh_lut[13] = 16'sd1;
+        atanh_lut[14] = 16'sd0;
+        atanh_lut[15] = 16'sd0;
+    end
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            x    <= 0;
+            y    <= 0;
+            z    <= 0;
+            iter <= 0;
+            done <= 0;
+        end
+        else begin
+            if (start) begin
+                x    <= 32'sd65536;
+                y    <= 0;
+                z    <= {{16{z_in[15]}}, z_in};
+                iter <= 0;
+                done <= 0;
+            end
+            else if (iter < 16) begin
+                if (z >= 0) begin
+                    x <= x + (y >>> iter);
+                    y <= y + (x >>> iter);
+                    z <= z - {{16{atanh_lut[iter][15]}}, atanh_lut[iter]};
+                end
+                else begin
+                    x <= x - (y >>> iter);
+                    y <= y - (x >>> iter);
+                    z <= z + {{16{atanh_lut[iter][15]}}, atanh_lut[iter]};
+                end
+                iter <= iter + 1;
+            end
+            else begin
+                 // sinh(x) and cosh(x)
+                sinh_out <= y;
+                cosh_out <= x;
+
+                // e^x = cosh(x) + sinh(x)
+                exp_pos <= x + y;
+
+                // e^-x = cosh(x) - sinh(x)
+                exp_neg <= x - y;
+
+                // tanh(x) = (e^x - e^-x) / (e^x + e^-x)
+                tanh_out <= ((exp_pos - exp_neg) <<< 16) /
+                            (exp_pos + exp_neg);
+
+                done <= 1;
+            end
+        end
+    end
+
+endmodule
